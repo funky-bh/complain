@@ -2,3 +2,6 @@ anthropic
 pandas
 openpyxl
 python-dotenv
+streamlit
+bcrypt
+pyyaml

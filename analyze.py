@@ -223,10 +223,14 @@ def get_nested(row, *keys):
     return ""
 
 
-def analyze(filepath: str, output_path: str):
+def analyze(filepath: str, output_path: str, on_progress=None):
+    """Run the full analysis pipeline.
+
+    on_progress(current, total, message) is called after each consultation is processed.
+    """
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        sys.exit("Error: ANTHROPIC_API_KEY not set. Copy .env.example to .env and add your key.")
+        raise ValueError("ANTHROPIC_API_KEY not set. Copy .env.example to .env and add your key.")
 
     client = anthropic.Anthropic(api_key=api_key)
 
@@ -239,9 +243,9 @@ def analyze(filepath: str, output_path: str):
     user_df = find_sheet(sheets, "user", "User")
 
     if userchat_df is None:
-        sys.exit("Error: Could not find UserChat sheet in the Excel file.")
+        raise ValueError("Could not find UserChat sheet in the Excel file.")
     if message_df is None:
-        sys.exit("Error: Could not find Message sheet in the Excel file.")
+        raise ValueError("Could not find Message sheet in the Excel file.")
 
     # Normalize column names
     userchat_df.columns = [c.strip() for c in userchat_df.columns]
@@ -308,6 +312,9 @@ def analyze(filepath: str, output_path: str):
         # Summary
         print(f"  [{seq}/{total}] Summarizing chat {chat_id}...")
         summary = summarize_content(client, content)
+
+        if on_progress:
+            on_progress(seq, total, f"[{seq}/{total}] {chat_id} 요약 완료")
 
         # CSAT
         csat = get_nested(chat, "csat", "profile.csat", "CSAT")
@@ -450,7 +457,8 @@ def main():
     args = parser.parse_args()
 
     if not os.path.exists(args.input):
-        sys.exit(f"Error: File not found: {args.input}")
+        print(f"Error: File not found: {args.input}", file=sys.stderr)
+        sys.exit(1)
 
     if args.output:
         output_path = args.output
