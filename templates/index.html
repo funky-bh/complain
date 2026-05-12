@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CS 컴플레인 분석기</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.08);
+      padding: 48px 40px;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    .title {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1a1a2e;
+      text-align: center;
+      margin-bottom: 6px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #888;
+      font-size: 14px;
+      margin-bottom: 36px;
+    }
+
+    .drop-zone {
+      border: 2px dashed #c8d0e0;
+      border-radius: 10px;
+      padding: 40px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+      margin-bottom: 20px;
+    }
+
+    .drop-zone:hover,
+    .drop-zone.drag-over { border-color: #4f8ef7; background: #f5f8ff; }
+
+    .drop-zone .icon { font-size: 36px; margin-bottom: 10px; }
+
+    .drop-zone .hint {
+      color: #555;
+      font-size: 15px;
+      margin-bottom: 4px;
+    }
+
+    .drop-zone .hint span { color: #4f8ef7; font-weight: 600; }
+
+    .drop-zone .ext { color: #aaa; font-size: 12px; }
+
+    #file-input { display: none; }
+
+    #file-name {
+      font-size: 13px;
+      color: #4f8ef7;
+      text-align: center;
+      min-height: 18px;
+      margin-bottom: 20px;
+    }
+
+    button[type="submit"] {
+      width: 100%;
+      padding: 13px;
+      background: #4f8ef7;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+    }
+
+    button[type="submit"]:hover { background: #3a7de0; }
+    button[type="submit"]:disabled { background: #a0b8f0; cursor: not-allowed; }
+
+    .error {
+      background: #fff0f0;
+      border: 1px solid #ffc5c5;
+      color: #c0392b;
+      border-radius: 8px;
+      padding: 11px 14px;
+      font-size: 13px;
+      margin-top: 20px;
+    }
+
+    /* Loading overlay */
+    #loading {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(255,255,255,.85);
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      z-index: 99;
+    }
+
+    #loading.show { display: flex; }
+
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid #e0e7ff;
+      border-top-color: #4f8ef7;
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-text { font-size: 15px; color: #444; font-weight: 500; }
+  </style>
+</head>
+<body>
+
+  <div id="loading">
+    <div class="spinner"></div>
+    <div class="loading-text">분석 중입니다. 잠시만 기다려주세요…</div>
+  </div>
+
+  <div class="card">
+    <div class="title">📊 CS 컴플레인 분석기</div>
+    <div class="subtitle">채널톡 내보내기 파일을 업로드하면 분석된 엑셀 파일을 받을 수 있습니다.</div>
+
+    <form id="upload-form" action="/analyze" method="POST" enctype="multipart/form-data">
+      <div class="drop-zone" id="drop-zone">
+        <div class="icon">📁</div>
+        <div class="hint">파일을 드래그하거나 <span>클릭해서 선택</span></div>
+        <div class="ext">.xlsx 파일만 지원합니다</div>
+      </div>
+      <input id="file-input" name="file" type="file" accept=".xlsx">
+      <div id="file-name"></div>
+      <button type="submit" id="submit-btn" disabled>분석 시작</button>
+    </form>
+
+    {% if error %}
+    <div class="error">⚠️ {{ error }}</div>
+    {% endif %}
+  </div>
+
+  <script>
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const fileName  = document.getElementById('file-name');
+    const submitBtn = document.getElementById('submit-btn');
+    const form      = document.getElementById('upload-form');
+    const loading   = document.getElementById('loading');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropZone.classList.add('drag-over');
+    });
+
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file) setFile(file);
+    });
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) setFile(fileInput.files[0]);
+    });
+
+    function setFile(file) {
+      if (!file.name.toLowerCase().endsWith('.xlsx')) {
+        fileName.textContent = '⚠️ .xlsx 파일만 업로드할 수 있습니다.';
+        fileName.style.color = '#c0392b';
+        submitBtn.disabled = true;
+        return;
+      }
+      // Transfer dropped file to the input if needed
+      if (fileInput.files[0] !== file) {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        fileInput.files = dt.files;
+      }
+      fileName.textContent = file.name;
+      fileName.style.color = '#4f8ef7';
+      submitBtn.disabled = false;
+    }
+
+    form.addEventListener('submit', () => loading.classList.add('show'));
+  </script>
+
+</body>
+</html>

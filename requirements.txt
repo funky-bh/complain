@@ -2,6 +2,6 @@ anthropic
 pandas
 openpyxl
 python-dotenv
-streamlit
+flask
 bcrypt
 pyyaml
